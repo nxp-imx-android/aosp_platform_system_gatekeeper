@@ -19,8 +19,6 @@
 
 #include <string.h>
 
-using namespace std;
-
 namespace gatekeeper {
 
 /**
@@ -52,8 +50,8 @@ static inline gatekeeper_error_t read_from_buffer(const uint8_t **buffer, const 
     memcpy(&target->length, *buffer, sizeof(target->length));
     *buffer += sizeof(target->length);
     if (target->length != 0) {
-        const uint8_t *buffer_end = *buffer + target->length;
-        if (buffer_end > end || buffer_end <= *buffer) return ERROR_INVALID;
+        const size_t buffer_size = end - *buffer;
+        if (buffer_size < target->length) return ERROR_INVALID;
 
         target->buffer.reset(new uint8_t[target->length]);
         memcpy(target->buffer.get(), *buffer, target->length);
