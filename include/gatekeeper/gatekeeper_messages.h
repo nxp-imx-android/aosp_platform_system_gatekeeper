@@ -19,7 +19,6 @@
 #include <stdint.h>
 #include <gatekeeper/UniquePtr.h>
 
-#include <new>
 
 #include "gatekeeper_utils.h"
 /**
@@ -35,64 +34,36 @@ typedef enum {
     ERROR_INVALID = 1,
     ERROR_RETRY = 2,
     ERROR_UNKNOWN = 3,
-    ERROR_MEMORY_ALLOCATION_FAILED = 4,
 } gatekeeper_error_t;
 
 struct SizedBuffer {
     SizedBuffer() {
         length = 0;
     }
-    ~SizedBuffer() {
-        if (buffer && length > 0) {
-            memset_s(buffer.get(), 0, length);
+
+    /*
+     * Constructs a SizedBuffer of a provided
+     * length.
+     */
+    explicit SizedBuffer(uint32_t length) {
+        if (length != 0) {
+            buffer.reset(new uint8_t[length]);
+        } else {
+            buffer.reset();
         }
+        this->length = length;
     }
+
     /*
      * Constructs a SizedBuffer out of a pointer and a length
      * Takes ownership of the buf pointer, and deallocates it
      * when destructed.
      */
     SizedBuffer(uint8_t buf[], uint32_t len) {
-        if (buf == nullptr) {
-            length = 0;
-        } else {
-            buffer.reset(buf);
-            length = len;
-        }
+        buffer.reset(buf);
+        length = len;
     }
 
-    SizedBuffer(SizedBuffer && rhs) : buffer(move(rhs.buffer)), length(rhs.length) {
-        rhs.length = 0;
-    }
-
-    SizedBuffer & operator=(SizedBuffer && rhs) {
-        if (&rhs != this) {
-            buffer = move(rhs.buffer);
-            length = rhs.length;
-            rhs.length = 0;
-        }
-        return *this;
-    }
-
-    operator bool() const {
-        return buffer;
-    }
-
-    uint32_t size() const { return buffer ? length : 0; }
-
-    /**
-     * Returns an pointer to the const buffer IFF the buffer is initialized and the length
-     * field holds a values greater or equal to the size of the requested template argument type.
-     */
-    template <typename T>
-    const T* Data() const {
-        if (buffer.get() != nullptr && sizeof(T) <= length) {
-            return reinterpret_cast<const T*>(buffer.get());
-        }
-        return nullptr;
-    }
-
-private:
     UniquePtr<uint8_t[]> buffer;
     uint32_t length;
 };
@@ -167,13 +138,14 @@ struct VerifyRequest : public GateKeeperMessage {
     VerifyRequest(
             uint32_t user_id,
             uint64_t challenge,
-            SizedBuffer enrolled_password_handle,
-            SizedBuffer provided_password_payload);
-    VerifyRequest() : challenge(0) {}
+            SizedBuffer *enrolled_password_handle,
+            SizedBuffer *provided_password_payload);
+    VerifyRequest();
+    ~VerifyRequest();
 
-    uint32_t nonErrorSerializedSize() const override;
-    void nonErrorSerialize(uint8_t *buffer) const override;
-    gatekeeper_error_t nonErrorDeserialize(const uint8_t *payload, const uint8_t *end) override;
+    virtual uint32_t nonErrorSerializedSize() const;
+    virtual void nonErrorSerialize(uint8_t *buffer) const;
+    virtual gatekeeper_error_t nonErrorDeserialize(const uint8_t *payload, const uint8_t *end);
 
     uint64_t challenge;
     SizedBuffer password_handle;
@@ -181,27 +153,29 @@ struct VerifyRequest : public GateKeeperMessage {
 };
 
 struct VerifyResponse : public GateKeeperMessage {
-    VerifyResponse(uint32_t user_id, SizedBuffer auth_token);
+    VerifyResponse(uint32_t user_id, SizedBuffer *auth_token);
     VerifyResponse();
+    ~VerifyResponse();
 
-    void SetVerificationToken(SizedBuffer auth_token);
+    void SetVerificationToken(SizedBuffer *auth_token);
 
-    uint32_t nonErrorSerializedSize() const override;
-    void nonErrorSerialize(uint8_t *buffer) const override;
-    gatekeeper_error_t nonErrorDeserialize(const uint8_t *payload, const uint8_t *end) override;
+    virtual uint32_t nonErrorSerializedSize() const;
+    virtual void nonErrorSerialize(uint8_t *buffer) const;
+    virtual gatekeeper_error_t nonErrorDeserialize(const uint8_t *payload, const uint8_t *end);
 
     SizedBuffer auth_token;
     bool request_reenroll;
 };
 
 struct EnrollRequest : public GateKeeperMessage {
-    EnrollRequest(uint32_t user_id, SizedBuffer password_handle,
-            SizedBuffer provided_password, SizedBuffer enrolled_password);
-    EnrollRequest() = default;
+    EnrollRequest(uint32_t user_id, SizedBuffer *password_handle,
+            SizedBuffer *provided_password, SizedBuffer *enrolled_password);
+    EnrollRequest();
+    ~EnrollRequest();
 
-    uint32_t nonErrorSerializedSize() const override;
-    void nonErrorSerialize(uint8_t *buffer) const override;
-    gatekeeper_error_t nonErrorDeserialize(const uint8_t *payload, const uint8_t *end) override;
+    virtual uint32_t nonErrorSerializedSize() const;
+    virtual void nonErrorSerialize(uint8_t *buffer) const;
+    virtual gatekeeper_error_t nonErrorDeserialize(const uint8_t *payload, const uint8_t *end);
 
     /**
      * The password handle returned from the previous call to enroll or NULL
@@ -220,14 +194,15 @@ struct EnrollRequest : public GateKeeperMessage {
 
 struct EnrollResponse : public GateKeeperMessage {
 public:
-    EnrollResponse(uint32_t user_id, SizedBuffer enrolled_password_handle);
-    EnrollResponse() = default;
+    EnrollResponse(uint32_t user_id, SizedBuffer *enrolled_password_handle);
+    EnrollResponse();
+    ~EnrollResponse();
 
-    void SetEnrolledPasswordHandle(SizedBuffer enrolled_password_handle);
+    void SetEnrolledPasswordHandle(SizedBuffer *enrolled_password_handle);
 
-    uint32_t nonErrorSerializedSize() const override;
-    void nonErrorSerialize(uint8_t *buffer) const override;
-    gatekeeper_error_t nonErrorDeserialize(const uint8_t *payload, const uint8_t *end) override;
+    virtual uint32_t nonErrorSerializedSize() const;
+    virtual void nonErrorSerialize(uint8_t *buffer) const;
+    virtual gatekeeper_error_t nonErrorDeserialize(const uint8_t *payload, const uint8_t *end);
 
    SizedBuffer enrolled_password_handle;
 };

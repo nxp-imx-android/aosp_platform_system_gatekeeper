@@ -17,7 +17,7 @@
 #ifndef GATEKEEPER_UNIQUE_PTR_H_included
 #define GATEKEEPER_UNIQUE_PTR_H_included
 
-#include <stddef.h> // for size_t
+#include <stdlib.h> // For NULL.
 
 namespace gatekeeper {
 
@@ -50,32 +50,9 @@ struct DefaultDelete<T[]> {
 //   UniquePtr<C> c(new C);
 template <typename T, typename D = DefaultDelete<T> >
 class UniquePtr {
-    template<typename U, typename UD>
-    friend
-    class UniquePtr;
 public:
-    UniquePtr() : mPtr(nullptr) {}
     // Construct a new UniquePtr, taking ownership of the given raw pointer.
-    explicit UniquePtr(T* ptr) : mPtr(ptr) {
-    }
-    // NOLINTNEXTLINE(google-explicit-constructor)
-    UniquePtr(const decltype(nullptr)&) : mPtr(nullptr) {}
-
-    UniquePtr(UniquePtr && other): mPtr(other.mPtr) {
-        other.mPtr = nullptr;
-    }
-
-    template <typename U>
-    // NOLINTNEXTLINE(google-explicit-constructor)
-    UniquePtr(UniquePtr<U>&& other) : mPtr(other.mPtr) {
-        other.mPtr = nullptr;
-    }
-    UniquePtr& operator=(UniquePtr && other) {
-        if (&other != this) {
-            reset();
-            mPtr = other.release();
-        }
-        return *this;
+    explicit UniquePtr(T* ptr = NULL) : mPtr(ptr) {
     }
 
     ~UniquePtr() {
@@ -87,21 +64,18 @@ public:
     T* operator->() const { return mPtr; }
     T* get() const { return mPtr; }
 
-    // NOLINTNEXTLINE(google-explicit-constructor)
-    operator bool() const { return mPtr != nullptr; }
-
     // Returns the raw pointer and hands over ownership to the caller.
     // The pointer will not be deleted by UniquePtr.
     T* release() __attribute__((warn_unused_result)) {
         T* result = mPtr;
-        mPtr = nullptr;
+        mPtr = NULL;
         return result;
     }
 
     // Takes ownership of the given raw pointer.
     // If this smart pointer previously owned a different raw pointer, that
     // raw pointer will be freed.
-    void reset(T* ptr = nullptr) {
+    void reset(T* ptr = NULL) {
         if (ptr != mPtr) {
             D()(mPtr);
             mPtr = ptr;
@@ -116,8 +90,9 @@ private:
     template <typename T2> bool operator==(const UniquePtr<T2>& p) const;
     template <typename T2> bool operator!=(const UniquePtr<T2>& p) const;
 
-    UniquePtr(const UniquePtr&) = delete;
-    UniquePtr & operator=(const UniquePtr&) = delete;
+    // Disallow copy and assignment.
+    UniquePtr(const UniquePtr&);
+    void operator=(const UniquePtr&);
 };
 
 // Partial specialization for array types. Like std::unique_ptr, this removes
@@ -125,21 +100,7 @@ private:
 template <typename T, typename D>
 class UniquePtr<T[], D> {
 public:
-    UniquePtr() : mPtr(nullptr) {}
-    explicit UniquePtr(T* ptr) : mPtr(ptr) {
-    }
-    // NOLINTNEXTLINE(google-explicit-constructor)
-    UniquePtr(const decltype(nullptr)&) : mPtr(nullptr) {}
-
-    UniquePtr(UniquePtr && other): mPtr(other.mPtr) {
-        other.mPtr = nullptr;
-    }
-    UniquePtr& operator=(UniquePtr && other) {
-        if (&other != this) {
-            reset();
-            mPtr = other.release();
-        }
-        return *this;
+    explicit UniquePtr(T* ptr = NULL) : mPtr(ptr) {
     }
 
     ~UniquePtr() {
@@ -153,14 +114,11 @@ public:
 
     T* release() __attribute__((warn_unused_result)) {
         T* result = mPtr;
-        mPtr = nullptr;
+        mPtr = NULL;
         return result;
     }
 
-    // NOLINTNEXTLINE(google-explicit-constructor)
-    operator bool() const { return mPtr != nullptr; }
-
-    void reset(T* ptr = nullptr) {
+    void reset(T* ptr = NULL) {
         if (ptr != mPtr) {
             D()(mPtr);
             mPtr = ptr;
@@ -170,108 +128,10 @@ public:
 private:
     T* mPtr;
 
-    UniquePtr(const UniquePtr&) = delete;
-    UniquePtr & operator=(const UniquePtr&) = delete;
+    // Disallow copy and assignment.
+    UniquePtr(const UniquePtr&);
+    void operator=(const UniquePtr&);
 };
 
-} // namespace gatekeeper
-
-#if UNIQUE_PTR_TESTS
-
-// Run these tests with:
-// g++ -g -DUNIQUE_PTR_TESTS -x c++ UniquePtr.h && ./a.out
-
-#include <stdio.h>
-using namespace keymaster;
-
-static void assert(bool b) {
-    if (!b) {
-        fprintf(stderr, "FAIL\n");
-        abort();
-    }
-    fprintf(stderr, "OK\n");
-}
-static int cCount = 0;
-struct C {
-    C() { ++cCount; }
-    ~C() { --cCount; }
-};
-static bool freed = false;
-struct Freer {
-    void operator()(int* p) {
-        assert(*p == 123);
-        free(p);
-        freed = true;
-    }
-};
-
-int main(int argc, char* argv[]) {
-    //
-    // UniquePtr<T> tests...
-    //
-
-    // Can we free a single object?
-    {
-        UniquePtr<C> c(new C);
-        assert(cCount == 1);
-    }
-    assert(cCount == 0);
-    // Does release work?
-    C* rawC;
-    {
-        UniquePtr<C> c(new C);
-        assert(cCount == 1);
-        rawC = c.release();
-    }
-    assert(cCount == 1);
-    delete rawC;
-    // Does reset work?
-    {
-        UniquePtr<C> c(new C);
-        assert(cCount == 1);
-        c.reset(new C);
-        assert(cCount == 1);
-    }
-    assert(cCount == 0);
-
-    //
-    // UniquePtr<T[]> tests...
-    //
-
-    // Can we free an array?
-    {
-        UniquePtr<C[]> cs(new C[4]);
-        assert(cCount == 4);
-    }
-    assert(cCount == 0);
-    // Does release work?
-    {
-        UniquePtr<C[]> c(new C[4]);
-        assert(cCount == 4);
-        rawC = c.release();
-    }
-    assert(cCount == 4);
-    delete[] rawC;
-    // Does reset work?
-    {
-        UniquePtr<C[]> c(new C[4]);
-        assert(cCount == 4);
-        c.reset(new C[2]);
-        assert(cCount == 2);
-    }
-    assert(cCount == 0);
-
-    //
-    // Custom deleter tests...
-    //
-    assert(!freed);
-    {
-        UniquePtr<int, Freer> i(reinterpret_cast<int*>(malloc(sizeof(int))));
-        *i = 123;
-    }
-    assert(freed);
-    return 0;
-}
-#endif
-
+} //namespace gatekeeper
 #endif  // GATEKEEPER_UNIQUE_PTR_H_included
